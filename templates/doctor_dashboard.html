@@ -1,0 +1,42 @@
+<!-- templates/doctor_dashboard.html -->
+{% extends "base.html" %}
+{% block title %}Doctor Dashboard{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Doctor Dashboard</h1>
+            <p class="lead">Welcome, Dr. {{ doctor.name }}</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">Logout</a>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Doctor Information</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item"><strong>Name:</strong> {{ doctor.name }}</li>
+                        <li class="list-group-item"><strong>Email:</strong> {{ doctor.email }}</li>
+                        <li class="list-group-item"><strong>Phone:</strong> {{ doctor.phone }}</li>
+                        <li class="list-group-item"><strong>Specialization:</strong> {{ doctor.specialization }}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Upcoming Appointments</h5>
+                    <p class="card-text text-muted">No upcoming appointments found.</p>
+                    <!-- This would be populated with actual appointment data in a real application -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

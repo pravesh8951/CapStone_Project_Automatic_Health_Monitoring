@@ -1,0 +1,17 @@
+<!-- templates/index.html -->
+{% extends "base.html" %}
+{% block title %}Welcome{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-center" style="height: 80vh;">
+    <div class="text-center">
+        <h1 class="display-3">Welcome to the Healthcare Portal</h1>
+        <p class="lead">A unified system for hospitals, doctors, and patients.</p>
+        <hr class="my-4">
+        <p>Manage medical records, appointments, and patient care with efficiency.</p>
+        <a class="btn btn-primary btn-lg mt-3" href="{{ url_for('hospital_selection') }}" role="button">
+            <i class="fas fa-sign-in-alt me-2"></i>Get Started
+        </a>
+    </div>
+</div>
+{% endblock %}

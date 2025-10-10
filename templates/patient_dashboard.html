@@ -1,0 +1,107 @@
+<!-- templates/patient_dashboard.html -->
+{% extends "base.html" %}
+{% block title %}Patient Dashboard{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1>Patient Dashboard</h1>
+            <p class="lead">Welcome, {{ patient.name }} ({{ profile.profile_name }})</p>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('select_profile') }}" class="btn btn-outline-primary">Switch Profile</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">Logout</a>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Left Column: Profile Info -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-user-circle me-2"></i>Profile Information</h5>
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>Name:</strong> {{ patient.name }}</li>
+                    <li class="list-group-item"><strong>Phone:</strong> {{ patient.phone }}</li>
+                    <li class="list-group-item"><strong>Email:</strong> {{ patient.email or 'Not provided' }}</li>
+                    <li class="list-group-item"><strong>Date of Birth:</strong> {{ profile.date_of_birth.strftime('%d %B %Y') if profile.date_of_birth else 'N/A' }}</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Right Column: Uploads and Documents -->
+        <div class="col-md-8">
+            
+            <!-- === NEW UPLOAD SECTION === -->
+            {% if has_recent_appointment %}
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-upload me-2"></i>Upload New Document</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text text-muted">You can upload documents for 3 days following your appointment.</p>
+                        <form action="{{ url_for('upload_document') }}" method="post" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="document_type" class="form-label">Document Type</label>
+                                <select class="form-select" id="document_type" name="document_type" required>
+                                    <option value="Prescription">Prescription</option>
+                                    <option value="Report">Medical Report</option>
+                                    <option value="X-Ray">X-Ray / Scan</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="document" class="form-label">Select File</label>
+                                <input class="form-control" type="file" id="document" name="document" required>
+                                <div class="form-text">Allowed types: png, jpg, jpeg, gif, pdf, docx. Max size: 16 MB.</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-cloud-upload-alt me-2"></i>Upload
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>You can upload documents for up to 3 days after a scheduled appointment.
+                </div>
+            {% endif %}
+            <!-- === END OF UPLOAD SECTION === -->
+
+            <!-- === NEW DOCUMENT LIST SECTION === -->
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-file-alt me-2"></i>Your Recent Documents</h5>
+                </div>
+                <div class="card-body">
+                    {% if documents %}
+                        <ul class="list-group list-group-flush">
+                            {% for doc in documents %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="fas fa-file-medical-alt me-2 text-primary"></i>
+                                        <strong>{{ doc.document_type }}:</strong>
+                                        <a href="{{ url_for('uploaded_file', filename=doc.filename) }}" target="_blank">
+                                            {{ doc.filename.split('_', 2)[-1] }} <!-- Show original filename -->
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">Uploaded on: {{ doc.upload_date.strftime('%d %b %Y, %I:%M %p') }}</small>
+                                    </div>
+                                    <a href="{{ url_for('uploaded_file', filename=doc.filename) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-eye me-1"></i> View
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-center text-muted">No recent documents found.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- === END OF DOCUMENT LIST SECTION === -->
+
+        </div>
+    </div>
+</div>
+{% endblock %}

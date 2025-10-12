@@ -472,11 +472,27 @@
         </form>
     </main>
 
-    <div class="modal" id="confirmationModal">
-        <!-- Modal HTML remains the same -->
-        <div class="modal-content"><i class="fas fa-check-circle confirmation-icon"></i><h2 class="confirmation-title">Appointment Booked!</h2><div class="confirmation-details"><p>Your appointment has been successfully recorded.</p><p>Details will be sent to your email.</p></div><button class="close-btn" onclick="closeModal()"><i class="fas fa-check"></i> Done</button></div>
+ <!-- In inperson.html, update the confirmation modal -->
+<div class="modal" id="confirmationModal">
+    <div class="modal-content">
+        <i class="fas fa-check-circle confirmation-icon"></i>
+        <h2 class="confirmation-title">Appointment Booked!</h2>
+        <div class="confirmation-details">
+            <p>Your appointment has been successfully recorded.</p>
+            
+            <!-- This div will be shown by JavaScript only for new users -->
+            <div id="password-info" style="display: none;">
+                <hr>
+                <p><strong>A new account has been created for you.</strong></p>
+                <p>You can now log in using your **Phone/Email** and your **Date of Birth** as the password.</p>
+                <p><a href="{{ url_for('patient_login') }}" class="btn btn-sm btn-primary mt-2">Login Now</a></p>
+            </div>
+        </div>
+        <button class="close-btn" onclick="closeModal()">
+            <i class="fas fa-check"></i> Done
+        </button>
     </div>
-
+</div>
     <script>
         // --- THIS SCRIPT IS COMPLETELY NEW ---
         // DOM elements
@@ -636,19 +652,24 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    // Check if a new password was generated
-                    const passwordInfoDiv = document.getElementById('password-info');
-                    if (result.generated_password) {
-                        document.getElementById('loginPhone').textContent = result.login_phone;
-                        document.getElementById('generatedPassword').textContent = result.generated_password;
-                        passwordInfoDiv.style.display = 'block';
-                    } else {
-                        passwordInfoDiv.style.display = 'none';
-                    }
-                    modal.style.display = 'flex';
-                } else {
-                    alert('Booking failed: ' + result.message);
-                }
+    const passwordInfoDiv = document.getElementById('password-info');
+    
+    // --- THIS IS THE CORRECTED LOGIC ---
+    // Check the 'new_user' flag that the server now sends.
+    if (result.new_user) {
+        // If it's a new user, show the password info div.
+        passwordInfoDiv.style.display = 'block';
+    } else {
+        // If it's an existing user, make sure the div is hidden.
+        passwordInfoDiv.style.display = 'none';
+    }
+    
+    // Show the success modal in either case.
+    modal.style.display = 'flex';
+
+} else {
+    alert('Booking failed: ' + result.message);
+}
             } catch (error) {
                 console.error('Error submitting form:', error);
                 alert('An error occurred. Please try again.');

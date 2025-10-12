@@ -101,16 +101,21 @@ class PatientProfile(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
 # --- Add this new model to your app.py ---
 
+# In app.py
+
 class PatientDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
-    document_type = db.Column(db.String(50), nullable=False) # e.g., 'Prescription', 'Report', 'X-Ray'
+    document_type = db.Column(db.String(50), nullable=False)
     upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
     
-    # Establish a relationship back to the Patient model
+    # --- ADD THIS NEW COLUMN AND RELATIONSHIP ---
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctor.id'), nullable=True) # Nullable = True, because patient can upload
+    doctor = db.relationship('Doctor', backref='uploaded_documents')
+    # --- END OF ADDITION ---
+    
     patient = db.relationship('Patient', backref=db.backref('documents', lazy=True))
-
 class Appointment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_name = db.Column(db.String(100), nullable=False)
@@ -127,8 +132,21 @@ class Appointment(db.Model):
     # --- END OF ADDED COLUMN ---
     doctor = db.relationship('Doctor', backref='appointments')
 
-    # Establish a relationship to the Doctor model
-    doctor = db.relationship('Doctor', backref='appointments')
+class MedicalRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    record_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    notes = db.Column(db.Text, nullable=False) # Doctor's diagnosis, notes
+    prescription = db.Column(db.Text, nullable=True) # Medication details
+    
+    # Foreign keys to link the record
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctor.id'), nullable=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointment.id'), unique=True, nullable=False) # Each record is for one specific appointment
+
+    # Relationships
+    doctor = db.relationship('Doctor', backref='medical_records')
+    patient = db.relationship('Patient', backref='medical_records')
+    appointment = db.relationship('Appointment', backref=db.backref('medical_record', uselist=False))
 
 # --- MERGED ROUTES START HERE ---
 def generate_password(length=8):
@@ -230,6 +248,7 @@ def get_doctors_for_hospital(hospital_id):
 
 # --- ADD this new route to your app.py ---
 # This route handles the form submission
+# --- REPLACE your old /book_appointment route with this ---
 @app.route('/book_appointment', methods=['POST'])
 def book_appointment():
     try:
@@ -240,34 +259,38 @@ def book_appointment():
         # Check if patient already exists by phone or email
         patient = Patient.query.filter((Patient.phone == phone) | (Patient.email == email)).first()
         
-        generated_password = None
+        # --- LOGIC CHANGE: We no longer need a generated password ---
+        # The password will be their Date of Birth string 'YYYY-MM-DD'
         
         if not patient:
             # --- This is a NEW patient, create an account for them ---
-            generated_password = generate_password()
+            dob_string = data['dob'] # The password is the DOB string from the form
             
+            if not dob_string:
+                return jsonify({'success': False, 'message': 'Date of Birth is required for new patients.'}), 400
+
             # Create the main patient record for login
             new_patient = Patient(
                 name=data['firstName'] + ' ' + data.get('lastName', ''),
                 phone=phone,
                 email=email
             )
-            new_patient.set_password(generated_password)
+            # --- CRITICAL CHANGE: Set password to the DOB string ---
+            new_patient.set_password(dob_string) 
             db.session.add(new_patient)
             
-            # Create their profile with the extra details
-            # We need to commit the patient first to get an ID
-            db.session.flush() # Use flush to get the ID without ending the transaction
+            # --- CRITICAL FIX: Create the PatientProfile at the same time ---
+            # We need to flush to get the new_patient.id before committing
+            db.session.flush() 
             
             new_profile = PatientProfile(
                 profile_name=f"{new_patient.name}'s Profile",
-                date_of_birth=datetime.strptime(data['dob'], '%Y-%m-%d').date() if data.get('dob') else None,
-                aadhar_no=data.get('aadhar'),
-                gender=data.get('gender'), # Assuming you might add gender to the form
+                date_of_birth=datetime.strptime(dob_string, '%Y-%m-%d').date(),
+                aadhar_no=data.get('aadhar') if data.get('aadhar') else None,
                 patient_id=new_patient.id
             )
             db.session.add(new_profile)
-            patient = new_patient
+            patient = new_patient # Set the patient object to the newly created one
         
         # --- Create the appointment for either the new or existing patient ---
         new_appointment = Appointment(
@@ -278,24 +301,25 @@ def book_appointment():
             appointment_time=data['time'],
             reason_for_visit=data.get('reason', ''),
             doctor_id=data['doctorId'],
-            patient_id=patient.id  # Link to the patient
+            patient_id=patient.id
         )
         
         db.session.add(new_appointment)
         db.session.commit()
         
-        response_data = {'success': True, 'message': 'Appointment booked successfully!'}
-        if generated_password:
-            response_data['generated_password'] = generated_password
-            response_data['login_phone'] = phone
+        # --- LOGIC CHANGE: Update the response to the user ---
+        response_data = {
+            'success': True, 
+            'message': 'Appointment booked successfully!',
+            'new_user': (not patient.profiles) # True if a new user was just created
+        }
             
         return jsonify(response_data)
         
     except Exception as e:
-        db.session.rollback() # Rollback changes if an error occurs
+        db.session.rollback()
         print(f"Error booking appointment: {e}")
         return jsonify({'success': False, 'message': 'An error occurred. Please check your details and try again.'}), 500
-
 # --- THE CRITICAL CHANGE: THE LOGIN ROUTE ---
 @app.route("/login")
 def login():
@@ -374,13 +398,27 @@ def doctor_login():
             flash('Invalid doctor credentials.')
     return render_template('doctor_login.html')
 
+# --- MODIFY your existing /doctor_dashboard route ---
 @app.route('/doctor_dashboard')
 def doctor_dashboard():
     if session.get('user_type') != 'doctor':
         return redirect(url_for('doctor_login'))
-    doctor = Doctor.query.get(session.get('user_id'))
-    return render_template('doctor_dashboard.html', doctor=doctor)
-
+        
+    doctor_id = session.get('user_id')
+    doctor = Doctor.query.get(doctor_id)
+    
+    # --- NEW LOGIC TO FETCH APPOINTMENTS ---
+    # Order by date and time to show upcoming appointments first
+    upcoming_appointments = Appointment.query.filter(
+        Appointment.doctor_id == doctor_id,
+        Appointment.appointment_date >= datetime.utcnow().date()
+    ).order_by(Appointment.appointment_date, Appointment.appointment_time).all()
+    
+    return render_template(
+        'doctor_dashboard.html', 
+        doctor=doctor,
+        appointments=upcoming_appointments
+    )
 # --- Patient Routes (Password-based, No OTP) ---
 @app.route('/patient_register', methods=['GET', 'POST'])
 def patient_register():
@@ -400,35 +438,24 @@ def patient_register():
     return render_template('patient_register.html')
 
 # --- REPLACE your old patient_login function with this new one ---
+# --- REPLACE your old patient_login route with this ---
 @app.route('/patient_login', methods=['GET', 'POST'])
 def patient_login():
     if request.method == 'POST':
         identifier = request.form.get('identifier')
-        dob_string = request.form.get('dob') # Date comes from the form as a string
+        dob_string = request.form.get('dob') # The password is the DOB string 'YYYY-MM-DD'
 
-        # Basic validation to ensure fields are not empty
         if not identifier or not dob_string:
             flash('Please provide both your identifier and date of birth.', 'warning')
             return redirect(url_for('patient_login'))
 
-        try:
-            # Convert the date string from the form ('YYYY-MM-DD') into a Python date object
-            dob_object = datetime.strptime(dob_string, '%Y-%m-%d').date()
-        except ValueError:
-            flash('Invalid date format. Please use the date picker.', 'danger')
-            return redirect(url_for('patient_login'))
+        # Find the patient by their email or phone
+        patient = Patient.query.filter(or_(Patient.email == identifier, Patient.phone == identifier)).first()
 
-        # This is the core of the new logic:
-        # 1. Join the Patient and PatientProfile tables.
-        # 2. Filter to find a patient where the identifier is EITHER the email OR the phone.
-        # 3. AND also filter where the date_of_birth in their profile matches.
-        patient = Patient.query.join(PatientProfile).filter(
-            or_(Patient.email == identifier, Patient.phone == identifier),
-            PatientProfile.date_of_birth == dob_object
-        ).first()
-
-        if patient:
-            # If a matching patient is found, the login is successful
+        # --- CRITICAL CHANGE: Check the password hash ---
+        # We check if a patient was found AND if their hashed password matches the dob_string
+        if patient and patient.check_password(dob_string):
+            # Login successful
             session['user_id'] = patient.id
             session['user_type'] = 'patient'
             
@@ -438,7 +465,7 @@ def patient_login():
                 session['profile_id'] = patient.profiles[0].id
                 return redirect(url_for('patient_dashboard'))
         else:
-            # If no match is found, the credentials are wrong
+            # If no match or password check fails, the credentials are wrong
             flash('Invalid credentials. Please check your details and try again.', 'danger')
             return redirect(url_for('patient_login'))
             
@@ -519,7 +546,77 @@ def set_profile(profile_id):
         return redirect(url_for('patient_dashboard'))
     flash('Invalid profile selected.')
     return redirect(url_for('select_profile'))
+@app.route('/doctor/view_patient/<int:patient_id>/from_appt/<int:appointment_id>')
+def view_patient_details(patient_id, appointment_id):
+    # --- Security Check 1: Ensure user is a doctor ---
+    if session.get('user_type') != 'doctor':
+        flash("Access denied.", "danger")
+        return redirect(url_for('doctor_login'))
 
+    doctor_id = session.get('user_id')
+
+    # --- Security Check 2: Ensure this patient has an appointment with THIS doctor ---
+    appointment = Appointment.query.filter_by(
+        id=appointment_id, 
+        doctor_id=doctor_id, 
+        patient_id=patient_id
+    ).first()
+
+    if not appointment:
+        flash("You do not have permission to view this patient's records.", "danger")
+        return redirect(url_for('doctor_dashboard'))
+
+    # If security checks pass, fetch all patient data
+    patient = Patient.query.get_or_404(patient_id)
+    
+    # Fetch all of the patient's past documents and medical records (notes from doctors)
+    past_documents = PatientDocument.query.filter_by(patient_id=patient_id).order_by(PatientDocument.upload_date.desc()).all()
+    past_medical_records = MedicalRecord.query.filter_by(patient_id=patient_id).order_by(MedicalRecord.record_date.desc()).all()
+
+    return render_template(
+        'view_patient.html', 
+        patient=patient,
+        appointment=appointment,
+        past_documents=past_documents,
+        past_medical_records=past_medical_records
+    )
+
+@app.route('/doctor/add_medical_record', methods=['POST'])
+def add_medical_record():
+    # Security Check
+    if session.get('user_type') != 'doctor':
+        return "Access Denied", 403
+
+    doctor_id = session.get('user_id')
+    patient_id = request.form.get('patient_id')
+    appointment_id = request.form.get('appointment_id')
+    notes = request.form.get('notes')
+    prescription = request.form.get('prescription')
+    
+    # Verify this doctor is allowed to add a record for this appointment
+    appointment = Appointment.query.filter_by(id=appointment_id, doctor_id=doctor_id, patient_id=patient_id).first()
+    if not appointment:
+        flash("Invalid request.", "danger")
+        return redirect(url_for('doctor_dashboard'))
+        
+    # Check if a record already exists for this appointment
+    if appointment.medical_record:
+        flash("A medical record for this appointment already exists.", "warning")
+        return redirect(url_for('view_patient_details', patient_id=patient_id, appointment_id=appointment_id))
+
+    # Create and save the new medical record
+    new_record = MedicalRecord(
+        notes=notes,
+        prescription=prescription,
+        doctor_id=doctor_id,
+        patient_id=patient_id,
+        appointment_id=appointment_id
+    )
+    db.session.add(new_record)
+    db.session.commit()
+
+    flash("Medical record added successfully.", "success")
+    return redirect(url_for('view_patient_details', patient_id=patient_id, appointment_id=appointment_id))
 
 # --- Main execution ---
 if __name__ == '__main__':

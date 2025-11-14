@@ -16,6 +16,7 @@ import pytesseract
 from PIL import Image
 from dotenv import load_dotenv
 from chatbot import process_text # Make sure chatbot.py is in the same directory
+import google.generativeai as genai
 
 # --- App Configuration ---
 load_dotenv() # Load environment variables
@@ -617,6 +618,144 @@ def add_medical_record():
 
     flash("Medical record added successfully.", "success")
     return redirect(url_for('view_patient_details', patient_id=patient_id, appointment_id=appointment_id))
+
+
+
+# --- Initialize the OpenAI client right after your app config ---
+# It will automatically read the OPENAI_API_KEY from your .env file
+# Get API key from .env
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Configure Gemini
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+    # Initialize the Gemini model to be used for analysis
+    gemini_model = genai.GenerativeModel("gemini-2.5-flash") 
+    print("Gemini configured successfully.")
+except Exception as e:
+    gemini_model = None
+    print(f"WARNING: Could not configure Gemini. Analysis will fail. Error: {e}")
+# --- END OF GEMINI CONFIG BLOCK ---
+
+
+# --- ADD THIS NEW ROUTE for the doctor to upload files ---
+@app.route('/doctor/upload_for_patient', methods=['POST'])
+def doctor_upload_for_patient():
+    if session.get('user_type') != 'doctor':
+        return "Access Denied", 403
+
+    patient_id = request.form.get('patient_id')
+    doc_type = request.form.get('document_type')
+    file = request.files.get('document')
+    
+    # Security: Verify this doctor is allowed to upload for this patient
+    # (e.g., they have an appointment together)
+    appointment_exists = Appointment.query.filter_by(
+        doctor_id=session['user_id'],
+        patient_id=patient_id
+    ).first()
+
+    if not appointment_exists:
+        flash("You do not have permission to upload documents for this patient.", "danger")
+        return redirect(url_for('doctor_dashboard'))
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        unique_filename = f"doc_{patient_id}_{int(datetime.now().timestamp())}_{filename}"
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+        
+        new_document = PatientDocument(
+            filename=unique_filename,
+            document_type=doc_type,
+            patient_id=patient_id,
+            doctor_id=session['user_id'] # Link to the uploading doctor
+        )
+        db.session.add(new_document)
+        db.session.commit()
+        flash('Document uploaded for patient successfully!', 'success')
+    else:
+        flash('Invalid file or file type.', 'danger')
+        
+    # Redirect back to the patient view page, which requires appointment_id
+    return redirect(url_for('view_patient_details', patient_id=patient_id, appointment_id=appointment_exists.id))
+
+
+# --- REPLACE your entire old /analyze_document route with this ---
+import fitz # PyMuPDF
+
+@app.route('/analyze_document/<int:doc_id>', methods=['POST'])
+def analyze_document(doc_id):
+    if session.get('user_type') != 'patient':
+        return jsonify({"error": "Access Denied"}), 403
+
+    # Security: Ensure the document belongs to the logged-in patient
+    doc = PatientDocument.query.filter_by(id=doc_id, patient_id=session['user_id']).first()
+    if not doc:
+        return jsonify({"error": "Document not found or access denied"}), 404
+
+    # Check if Gemini was configured correctly on startup
+    if not gemini_model:
+        return jsonify({"error": "AI analysis service is not configured. Please contact support."}), 500
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], doc.filename)
+    extracted_text = ""
+
+    try:
+        # --- Text extraction logic (remains the same) ---
+        if doc.filename.lower().endswith('.pdf'):
+            with fitz.open(filepath) as pdf_doc:
+                for page in pdf_doc:
+                    extracted_text += page.get_text()
+        elif doc.filename.lower().split('.')[-1] in ['png', 'jpg', 'jpeg']:
+            image = Image.open(filepath)
+            extracted_text = pytesseract.image_to_string(image)
+        else:
+            return jsonify({"error": "Unsupported file type for analysis."}), 400
+        
+        if not extracted_text.strip():
+            return jsonify({"analysis": "Could not find any text in the document to analyze."})
+
+        # --- THIS IS THE NEW GEMINI LOGIC ---
+        # Create the prompt for Gemini
+        prompt = f"""
+        You are a helpful medical assistant. Your role is to analyze a medical document for a patient and explain it in simple, easy-to-understand language. Do not provide a direct diagnosis. Use clean Markdown for formatting with headings and bullet points.
+
+        Based on the following document text, provide a summary with these exact sections:
+        
+        ### Summary of Document
+        Start with a brief, one-sentence summary of what this document is (e.g., "This is a report for a chest X-ray.").
+
+        ### Key Findings
+        Use a bulleted list to highlight the most important results, measurements, or observations mentioned in the report.
+
+        ### Explanation of Terms
+        Use a bulleted list to explain any complex medical terms from the findings in simple language. If there are no complex terms, state "All terms are standard."
+
+        ### Recommendations (if mentioned)
+        Use a bulleted list to summarize any next steps, precautions, or follow-up advice mentioned in the document. If none are mentioned, state "No specific recommendations were mentioned in this report."
+
+        Here is the document text:
+        ---
+        {extracted_text}
+        ---
+        """
+        
+        # Send the prompt to the Gemini model
+        response = gemini_model.generate_content(prompt)
+        
+        # Safely get the text from the response
+        if response and response.candidates:
+            analysis = response.candidates[0].content.parts[0].text.strip()
+        else:
+            analysis = "Could not get a valid analysis from the AI model."
+        
+        return jsonify({"analysis": analysis})
+        # --- END OF NEW GEMINI LOGIC ---
+
+    except Exception as e:
+        print(f"Analysis Error: {e}")
+        return jsonify({"error": "An error occurred during analysis."}), 500
+
 
 # --- Main execution ---
 if __name__ == '__main__':

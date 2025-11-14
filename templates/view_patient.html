@@ -97,9 +97,34 @@
                     {% else %}
                         <p class="text-muted">This patient has not uploaded any documents.</p>
                     {% endif %}
+                    
                 </div>
             </div>
-
+            
+            <!-- === ADD THIS NEW CARD === -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5><i class="fas fa-cloud-upload-alt me-2"></i>Upload for Patient</h5>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('doctor_upload_for_patient') }}" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="patient_id" value="{{ patient.id }}">
+                <div class="mb-3">
+                    <label for="doc_type_doctor" class="form-label">Document Type</label>
+                    <select class="form-select" id="doc_type_doctor" name="document_type" required>
+                        <option value="Prescription">Prescription</option>
+                        <option value="Lab Report">Lab Report</option>
+                        <option value="Scan Report">Scan Report</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="doc_doctor" class="form-label">Select File</label>
+                    <input class="form-control" type="file" id="doc_doctor" name="document" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Document</button>
+            </form>
+        </div>
+    </div>
             <!-- Previous Consultation Records -->
             <div class="card">
                 <div class="card-header">
@@ -125,4 +150,5 @@
         </div>
     </div>
 </div>
+
 {% endblock %}

@@ -70,38 +70,118 @@
             <!-- === END OF UPLOAD SECTION === -->
 
             <!-- === NEW DOCUMENT LIST SECTION === -->
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-file-alt me-2"></i>Your Recent Documents</h5>
-                </div>
-                <div class="card-body">
-                    {% if documents %}
-                        <ul class="list-group list-group-flush">
-                            {% for doc in documents %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <i class="fas fa-file-medical-alt me-2 text-primary"></i>
-                                        <strong>{{ doc.document_type }}:</strong>
-                                        <a href="{{ url_for('uploaded_file', filename=doc.filename) }}" target="_blank">
-                                            {{ doc.filename.split('_', 2)[-1] }} <!-- Show original filename -->
-                                        </a>
-                                        <br>
-                                        <small class="text-muted">Uploaded on: {{ doc.upload_date.strftime('%d %b %Y, %I:%M %p') }}</small>
-                                    </div>
-                                    <a href="{{ url_for('uploaded_file', filename=doc.filename) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                        <i class="fas fa-eye me-1"></i> View
-                                    </a>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-center text-muted">No recent documents found.</p>
-                    {% endif %}
-                </div>
-            </div>
+<!-- === REPLACE the entire "Your Medical Documents" card with this === -->
+<div class="card">
+    <div class="card-header">
+        <h5><i class="fas fa-file-alt me-2"></i>Your Medical Documents</h5>
+    </div>
+    <div class="card-body">
+        {% if documents %}
+            <ul class="list-group list-group-flush">
+                {% for doc in documents %}
+                    <li class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">
+                                    <i class="fas fa-file-medical-alt me-2 text-primary"></i>
+                                    {{ doc.document_type }}
+                                </h6>
+                                <small class="text-muted">
+                                    {% if doc.doctor_id %}
+                                        Uploaded by Dr. {{ doc.doctor.name }} on {{ doc.upload_date.strftime('%d %b %Y') }}
+                                    {% else %}
+                                        Uploaded by you on {{ doc.upload_date.strftime('%d %b %Y') }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                            
+                            <!-- CORRECTED BUTTON GROUP -->
+                            <div class="btn-group" role="group">
+                                <!-- Download button (works for all) -->
+                                <a href="{{ url_for('uploaded_file', filename=doc.filename) }}" download class="btn btn-sm btn-outline-secondary" title="Download">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                                <!-- Analyze button (NOW works for all documents) -->
+                                <button type="button" class="btn btn-sm btn-outline-info analyze-btn" data-doc-id="{{ doc.id }}" title="Analyze Document">
+                                    <i class="fas fa-magic"></i> Analyze
+                                </button>
+                            </div>
+                            <!-- END CORRECTED BUTTON GROUP -->
+
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-center text-muted">No documents found.</p>
+        {% endif %}
+    </div>
+</div>
             <!-- === END OF DOCUMENT LIST SECTION === -->
 
         </div>
     </div>
 </div>
+<div class="modal fade" id="analysisModal" tabindex="-1" aria-labelledby="analysisModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="analysisModalLabel"><i class="fas fa-magic me-2"></i>Document Analysis</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="analysisResultBody">
+        <!-- Loading spinner -->
+        <div class="text-center" id="analysisSpinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Analyzing document, please wait...</p>
+        </div>
+        <!-- Analysis result will be injected here -->
+        <div id="analysisText" style="white-space: pre-wrap;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const analysisModal = new bootstrap.Modal(document.getElementById('analysisModal'));
+    const analysisResultBody = document.getElementById('analysisResultBody');
+    const analysisSpinner = document.getElementById('analysisSpinner');
+    const analysisText = document.getElementById('analysisText');
+
+    document.querySelectorAll('.analyze-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            const docId = this.dataset.docId;
+            
+            // Reset and show modal with spinner
+            analysisText.innerHTML = '';
+            analysisSpinner.style.display = 'block';
+            analysisModal.show();
+
+            fetch(`/analyze_document/${docId}`, {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                analysisSpinner.style.display = 'none';
+                if (data.error) {
+                    analysisText.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                } else {
+                    analysisText.innerHTML = marked.parse(data.analysis);
+                }
+            })
+            .catch(error => {
+                analysisSpinner.style.display = 'none';
+                analysisText.innerHTML = `<div class="alert alert-danger">A network error occurred. Please try again.</div>`;
+                console.error('Error:', error);
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

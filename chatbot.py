@@ -13,7 +13,7 @@ print("Gemini API Key Loaded:", API_KEY)  # Debugging
 genai.configure(api_key=API_KEY)
 
 # Initialize model (latest recommended)
-model = genai.GenerativeModel("gemini-1.5-pro")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 def process_text(extracted_text):
     try:

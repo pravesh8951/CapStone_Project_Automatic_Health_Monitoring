@@ -432,17 +432,6 @@ Contributions are welcome! Please follow these steps:
 Department of Information Science  
 Presidency University, Bangalore
 
----
-
-## 📞 Support & Contact
-
-For issues, questions, or suggestions:
-- **GitHub Issues:** [Create an Issue](https://github.com/your-repo/issues)
-- **Email:** your-email@example.com
-- **Project Repository:** [GitHub Link](https://github.com/your-repo/ahms)
-
----
-
 ## 📄 License
 
 This project is licensed under the **Academic License** - for academic and research purposes only.
@@ -464,17 +453,6 @@ We extend our gratitude to:
 - **API Providers:** Google AI, OpenAI, Geolocation Services
 - **All testers and early adopters** for feedback and suggestions
 
----
-
-## 📚 Additional Resources
-
-- [Project Documentation](docs/)
-- [API Reference](docs/API.md)
-- [Database Schema](docs/DATABASE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Contributing Guide](CONTRIBUTING.md)
-
----
 
 <div align="center">
 
@@ -483,3 +461,4 @@ We extend our gratitude to:
 Made with ❤️ by AHMS Team
 
 </div>
+
